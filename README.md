@@ -9,7 +9,7 @@ Aplikasi pemesanan lapangan olahraga berbasis Next.js App Router, React, Tailwin
 - Permintaan reservasi menyimpan status `pending`; pengelola dapat menerima, menolak, atau membatalkan pesanan yang telah dikonfirmasi.
 - Pencegahan double booking di sisi server dalam transaksi PostgreSQL. Baris lapangan dikunci (`SELECT ... FOR UPDATE`) sebelum cek bentrok dan insert, sehingga dua permintaan serentak untuk lapangan yang sama tidak dapat mengambil slot yang sama.
 - Login email/password menggunakan password hash `scrypt` di tabel `users`; admin diarahkan ke dashboard dan user ke halaman booking. Login memakai cookie sesi HttpOnly.
-- Dashboard admin menggunakan sesi login admin; tombol bypass hanya tersedia di development. Pembaruan booking menggunakan Server-Sent Events (SSE).
+- Dashboard admin dilindungi pemeriksaan sesi server dan hanya ditampilkan setelah admin login; tombol bypass hanya tersedia di development. Pembaruan booking menggunakan Server-Sent Events (SSE).
 - Saat admin mengonfirmasi booking, aplikasi mengirim pesan konfirmasi melalui OpenWA setelah status booking berhasil tersimpan.
 
 ## Menjalankan aplikasi
