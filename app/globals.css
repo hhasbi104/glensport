@@ -1,0 +1,98 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+  --ink: #17231d;
+  --muted: #748078;
+  --green: #b7f36b;
+  --green-dark: #193b2b;
+  --paper: #f5f7f2;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+::selection {
+  background: var(--green);
+  color: var(--green-dark);
+}
+
+.court-grid {
+  background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+  background-size: 34px 34px;
+}
+
+.court-lines {
+  background:
+    linear-gradient(90deg, transparent calc(50% - 1px), rgba(255,255,255,.25) calc(50% - 1px), rgba(255,255,255,.25) calc(50% + 1px), transparent calc(50% + 1px)),
+    radial-gradient(ellipse at center, transparent 23%, rgba(255,255,255,.25) 23.2%, rgba(255,255,255,.25) 23.7%, transparent 24%);
+}
+
+.hero-photo-track {
+  width: 600%;
+  animation: hero-photo-scroll 30s linear infinite;
+}
+
+.hero-photo {
+  flex: 0 0 16.666667%;
+  background-position: center;
+  background-size: cover;
+}
+
+@keyframes hero-photo-scroll {
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-photo-track {
+    animation: none;
+  }
+}
+
+.soft-shadow {
+  box-shadow: 0 16px 48px rgba(27, 46, 34, 0.07);
+}
+
+.admin-table th {
+  color: #78847b;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.admin-table td,
+.admin-table th {
+  padding: 17px 18px;
+  text-align: left;
+}
+
+.admin-table tbody tr + tr td {
+  border-top: 1px solid #edf0eb;
+}
