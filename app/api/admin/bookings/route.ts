@@ -5,13 +5,7 @@ import { getPool } from "@/lib/db";
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
-  const sessionCookie = request.headers
-    .get("cookie")
-    ?.split(";")
-    .map((part) => part.trim())
-    .find((part) => part.startsWith("courtly_session="))
-    ?.slice("courtly_session=".length);
-  if (!isAdminAuthorized(request.headers.get("x-admin-key"), sessionCookie ?? null)) {
+  if (!isAdminAuthorized(request)) {
     return NextResponse.json({ error: "Akses admin tidak diizinkan." }, { status: 401 });
   }
 

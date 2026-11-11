@@ -9,13 +9,7 @@ export const runtime = "nodejs";
 type RouteContext = { params: Promise<{ id: string }> };
 
 export async function PATCH(request: Request, { params }: RouteContext) {
-  const sessionCookie = request.headers
-    .get("cookie")
-    ?.split(";")
-    .map((part) => part.trim())
-    .find((part) => part.startsWith("courtly_session="))
-    ?.slice("courtly_session=".length);
-  if (!isAdminAuthorized(request.headers.get("x-admin-key"), sessionCookie ?? null)) {
+  if (!isAdminAuthorized(request)) {
     return NextResponse.json({ error: "Akses admin tidak diizinkan." }, { status: 401 });
   }
 
@@ -48,7 +42,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
        FROM bookings b
        JOIN courts c ON c.id = b.court_id
        LEFT JOIN users u ON u.id = b.user_id
-       WHERE b.id = $1 FOR UPDATE`,
+       WHERE b.id = $1 FOR UPDATE OF b`,
       [id],
     );
     const booking = result.rows[0];

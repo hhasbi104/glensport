@@ -16,6 +16,16 @@ function loadLocalEnv() {
   }
 }
 
+function normalizeCaCertificate(value) {
+  return value
+    .replace(/\\n/g, "\n")
+    .replace(
+      /-----BEGIN CERTIFICATE-----\s*([\s\S]*?)\s*-----END CERTIFICATE-----/g,
+      (_certificate, body) =>
+        `-----BEGIN CERTIFICATE-----\n${body.replace(/\s+/g, "")}\n-----END CERTIFICATE-----`,
+    );
+}
+
 loadLocalEnv();
 
 const email = process.env.ADMIN_EMAIL?.trim().toLowerCase();
@@ -34,14 +44,16 @@ if (
 
 const salt = randomBytes(16).toString("hex");
 const passwordHash = `scrypt$${salt}$${scryptSync(password, salt, 64).toString("hex")}`;
-const sslCa = process.env.DB_SSL_CA;
+const sslCa = process.env.DB_SSL_CA
+  ? normalizeCaCertificate(process.env.DB_SSL_CA)
+  : undefined;
 const connection = new pg.Client({
   host: process.env.DB_HOST || "localhost",
   port: Number(process.env.DB_PORT || 5432),
   user: process.env.DB_USER || "postgres",
   password: process.env.DB_PASSWORD || "",
   database: process.env.DB_NAME || "sport_court_booking",
-  ssl: sslCa ? { ca: sslCa.replace(/\\n/g, "\n") } : undefined,
+  ssl: sslCa ? { ca: sslCa } : undefined,
 });
 
 try {

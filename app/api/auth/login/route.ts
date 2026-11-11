@@ -65,7 +65,10 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("Login failed:", error);
     return NextResponse.json(
-      { error: "Login gagal diproses. Pastikan migrasi database autentikasi sudah dijalankan." },
+      {
+        error:
+          "Login gagal diproses. Periksa koneksi PostgreSQL dan pastikan tabel serta akun admin sudah tersedia.",
+      },
       { status: 500 },
     );
   }

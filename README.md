@@ -9,7 +9,7 @@ Aplikasi pemesanan lapangan olahraga berbasis Next.js App Router, React, Tailwin
 - Permintaan reservasi menyimpan status `pending`; pengelola dapat menerima, menolak, atau membatalkan pesanan yang telah dikonfirmasi.
 - Pencegahan double booking di sisi server dalam transaksi PostgreSQL. Baris lapangan dikunci (`SELECT ... FOR UPDATE`) sebelum cek bentrok dan insert, sehingga dua permintaan serentak untuk lapangan yang sama tidak dapat mengambil slot yang sama.
 - Login email/password menggunakan password hash `scrypt` di tabel `users`; admin diarahkan ke dashboard dan user ke halaman booking. Login memakai cookie sesi HttpOnly.
-- Dashboard admin otomatis masuk tanpa token hanya saat `npm run dev`; tombol bypass hanya tersedia di development. Saat produksi dashboard memakai sesi admin atau `ADMIN_API_KEY`. Pembaruan booking menggunakan Server-Sent Events (SSE).
+- Dashboard admin menggunakan sesi login admin; tombol bypass hanya tersedia di development. Pembaruan booking menggunakan Server-Sent Events (SSE).
 - Saat admin mengonfirmasi booking, aplikasi mengirim template WhatsApp melalui WhatsApp Cloud API. Pesan dikirim setelah status booking berhasil tersimpan.
 
 ## Menjalankan aplikasi
@@ -22,7 +22,7 @@ Persyaratan: Node.js 20.9+, npm, dan PostgreSQL 14+.
    psql -h localhost -p 5432 -U postgres -d sport_court_booking -f database/schema.sql
    ```
 
-2. Salin `.env.example` menjadi `.env.local`. Atur koneksi PostgreSQL, `ADMIN_EMAIL`, `ADMIN_PASSWORD` (minimal 12 karakter), `SESSION_SECRET`, dan `ADMIN_API_KEY` dengan nilai acak milik sendiri.
+2. Salin `.env.example` menjadi `.env.local`. Atur koneksi PostgreSQL, `ADMIN_EMAIL`, `ADMIN_PASSWORD` (minimal 12 karakter), dan `SESSION_SECRET` dengan nilai acak milik sendiri.
 3. Untuk notifikasi WhatsApp, isi `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_TEMPLATE_NAME`, `WHATSAPP_TEMPLATE_LANGUAGE=id`, dan `WHATSAPP_GRAPH_API_VERSION` di `.env.local`. Buat dan setujui template bahasa Indonesia di WhatsApp Manager dengan body berikut, menggunakan contoh nilai untuk semua variabel:
 
    ```text
@@ -56,9 +56,9 @@ Untuk produksi, jalankan `npm run build` lalu `npm run start`. Pastikan kredensi
 4. Di pengaturan project Vercel, tambahkan environment variables berikut untuk **Production** (dan Preview jika diperlukan):
    - `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` dari detail koneksi PostgreSQL Aiven.
    - `DB_SSL_CA` berisi seluruh isi CA certificate PEM dari Aiven.
-   - `ADMIN_EMAIL`, `ADMIN_PASSWORD` (minimal 12 karakter), `SESSION_SECRET` (acak, minimal 32 karakter), dan `ADMIN_API_KEY` (acak).
+   - `ADMIN_EMAIL`, `ADMIN_PASSWORD` (minimal 12 karakter), dan `SESSION_SECRET` (acak, minimal 32 karakter).
    - Variabel `WHATSAPP_*` hanya jika notifikasi WhatsApp akan digunakan.
-5. Setelah database dan variabel tersedia, buat akun admin dengan menjalankan `npm run seed:admin` dari komputer lokal yang `.env.local`-nya sementara diatur ke koneksi Aiven yang sama. Untuk `DB_SSL_CA` di `.env.local`, simpan PEM dalam satu baris dengan setiap baris certificate dipisahkan oleh karakter literal `\n`; di Vercel, tempel isi PEM lengkap. Jangan commit atau membagikan file tersebut.
+5. Setelah database dan variabel tersedia, buat akun admin dengan menjalankan `npm run seed:admin` dari komputer lokal yang `.env.local`-nya sementara diatur ke koneksi Aiven yang sama. Untuk `DB_SSL_CA` di `.env.local`, tempel isi CA certificate PEM Aiven; aplikasi menerima baris baru maupun certificate yang tertempel sebagai satu baris. Di Vercel, tempel isi PEM lengkap. Jangan commit atau membagikan file tersebut.
 6. Deploy atau redeploy project dari Vercel. Uji halaman booking, login admin, dan pembuatan booking.
 
 Vercel menjalankan fungsi di lingkungan yang dapat berbeda-beda. Fitur pembaruan dashboard admin melalui SSE saat ini memakai listener in-memory, sehingga pembaruan lintas instance tidak dijamin; data tetap tersimpan di PostgreSQL. Untuk notifikasi real-time yang andal, gunakan broker bersama atau polling.
@@ -70,9 +70,9 @@ Vercel menjalankan fungsi di lingkungan yang dapat berbeda-beda. Fitur pembaruan
 | GET | `/api/courts?sport=Futsal` | Daftar lapangan aktif |
 | GET | `/api/bookings?date=YYYY-MM-DD` | Slot yang sudah ditahan pada tanggal tersebut |
 | POST | `/api/bookings` | Membuat permintaan booking |
-| GET | `/api/admin/bookings` | Daftar pesanan (header `x-admin-key`) |
-| PATCH | `/api/admin/bookings/:id` | Ubah status (header `x-admin-key`) |
-| GET | `/api/admin/events` | Stream pembaruan SSE (sesi admin atau header `x-admin-key`) |
+| GET | `/api/admin/bookings` | Daftar pesanan (sesi admin) |
+| PATCH | `/api/admin/bookings/:id` | Ubah status (sesi admin) |
+| GET | `/api/admin/events` | Stream pembaruan SSE (sesi admin) |
 | POST | `/api/auth/login` | Validasi email/password dan buat sesi |
 | POST | `/api/auth/dev-login` | Bypass admin (development saja) |
 

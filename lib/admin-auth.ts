@@ -9,7 +9,6 @@ export type AuthenticatedSession = {
 
 function sessionSecret(): string | null {
   if (process.env.SESSION_SECRET) return process.env.SESSION_SECRET;
-  if (process.env.ADMIN_API_KEY) return process.env.ADMIN_API_KEY;
   return process.env.NODE_ENV === "development"
     ? "courtly-development-session-secret"
     : null;
@@ -73,23 +72,6 @@ export function getSessionFromRequest(request: Request): AuthenticatedSession | 
   return verifySessionToken(token ? decodeURIComponent(token) : null);
 }
 
-export function isAdminAuthorized(
-  candidate: string | null,
-  sessionCookie: string | null = null,
-): boolean {
-  if (process.env.NODE_ENV === "development") return true;
-
-  const expected = process.env.ADMIN_API_KEY;
-  if (expected && candidate) {
-    const candidateBuffer = Buffer.from(candidate);
-    const expectedBuffer = Buffer.from(expected);
-    if (
-      candidateBuffer.length === expectedBuffer.length &&
-      timingSafeEqual(candidateBuffer, expectedBuffer)
-    ) {
-      return true;
-    }
-  }
-
-  return verifySessionToken(sessionCookie)?.role === "admin";
+export function isAdminAuthorized(request: Request): boolean {
+  return getSessionFromRequest(request)?.role === "admin";
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -26,12 +26,6 @@ const statusNames: Record<Booking["status"], string> = {
   rejected: "Ditolak",
   cancelled: "Dibatalkan",
 };
-const SESSION_AUTH = "cookie-session";
-
-function authHeaders(token: string): HeadersInit {
-  return token === SESSION_AUTH ? {} : { "x-admin-key": token };
-}
-
 function rupiah(amount: number) {
   return new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(amount);
 }
@@ -45,10 +39,9 @@ function dateLabel(value: string) {
 }
 
 export default function AdminPage() {
-  const isDevelopment = process.env.NODE_ENV === "development";
   const router = useRouter();
-  const [token, setToken] = useState("");
-  const [draftToken, setDraftToken] = useState("");
+  const [authorized, setAuthorized] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -57,11 +50,10 @@ export default function AdminPage() {
   const [updating, setUpdating] = useState<number | null>(null);
   const [connected, setConnected] = useState(false);
 
-  const loadBookings = useCallback(async (key: string) => {
-    if (!key) return;
+  const loadBookings = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/admin/bookings", { headers: authHeaders(key), cache: "no-store" });
+      const response = await fetch("/api/admin/bookings", { cache: "no-store" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Pesanan gagal dimuat.");
       setBookings(data.bookings as Booking[]);
@@ -74,39 +66,33 @@ export default function AdminPage() {
   }, []);
 
   useEffect(() => {
-    if (isDevelopment) {
-      sessionStorage.setItem("courtly-admin-key", "development");
-      setToken("development");
-      setDraftToken("development");
-      return;
-    }
-
-    const savedToken = sessionStorage.getItem("courtly-admin-key");
-    if (savedToken) {
-      setToken(savedToken);
-      setDraftToken(savedToken);
-      return;
-    }
-
     let active = true;
     fetch("/api/auth/session", { cache: "no-store" })
       .then(async (response) => {
-        if (!response.ok) return;
-        const session = await response.json();
-        if (active && session.role === "admin") setToken(SESSION_AUTH);
+        if (!response.ok) {
+          if (active) router.replace("/login");
+          return;
+        }
+        const session: { role?: string } = await response.json();
+        if (active && session.role === "admin") setAuthorized(true);
         else if (active && session.role === "user") router.replace("/");
+        else if (active) router.replace("/login");
       })
       .catch((caught: unknown) => {
         console.error("Failed to check admin session:", caught);
+        if (active) setError("Sesi admin gagal diperiksa. Coba login kembali.");
+      })
+      .finally(() => {
+        if (active) setCheckingSession(false);
       });
     return () => {
       active = false;
     };
-  }, [isDevelopment, router]);
+  }, [router]);
 
   useEffect(() => {
-    if (!token) return;
-    void loadBookings(token);
+    if (!authorized) return;
+    void loadBookings();
     const controller = new AbortController();
     let reconnectTimer: ReturnType<typeof setTimeout>;
     let alive = true;
@@ -115,7 +101,6 @@ export default function AdminPage() {
       while (alive) {
         try {
           const response = await fetch("/api/admin/events", {
-            headers: authHeaders(token),
             signal: controller.signal,
             cache: "no-store",
           });
@@ -134,7 +119,7 @@ export default function AdminPage() {
             const events = buffer.split("\n\n");
             buffer = events.pop() ?? "";
             if (events.some((event) => event.includes("event: bookings_changed"))) {
-              void loadBookings(token);
+              void loadBookings();
             }
           }
           setConnected(false);
@@ -154,21 +139,11 @@ export default function AdminPage() {
       controller.abort();
       clearTimeout(reconnectTimer);
     };
-  }, [token, loadBookings]);
-
-  function signIn(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const value = draftToken.trim();
-    if (!value) return;
-    sessionStorage.setItem("courtly-admin-key", value);
-    setError("");
-    setToken(value);
-  }
+  }, [authorized, loadBookings]);
 
   function signOut() {
-    sessionStorage.removeItem("courtly-admin-key");
-    if (token === SESSION_AUTH) void fetch("/api/auth/logout", { method: "POST" });
-    setToken("");
+    void fetch("/api/auth/logout", { method: "POST" });
+    setAuthorized(false);
     setBookings([]);
     setConnected(false);
     router.replace("/login");
@@ -182,12 +157,12 @@ export default function AdminPage() {
     try {
       const response = await fetch(`/api/admin/bookings/${booking.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", ...authHeaders(token) },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Status gagal diperbarui.");
-      await loadBookings(token);
+      await loadBookings();
       if (status === "confirmed") {
         setNoticeWarning(data.notification?.status !== "sent");
         setNotice(data.notification?.status === "sent"
@@ -204,21 +179,12 @@ export default function AdminPage() {
   const pendingCount = bookings.filter((booking) => booking.status === "pending").length;
   const confirmedCount = bookings.filter((booking) => booking.status === "confirmed").length;
 
-  if (!token) {
+  if (checkingSession || !authorized) {
     return (
       <main className="grid min-h-screen place-items-center bg-[#f5f7f2] px-5">
-        <div className="w-full max-w-md rounded-3xl border border-[#e5eae2] bg-white p-7 soft-shadow sm:p-9">
-          <Link href="/login" className="text-sm font-bold text-[#55705c]">← Buka halaman login</Link>
-          <div className="mt-8 grid h-12 w-12 place-items-center rounded-2xl bg-[#eaf4e5] text-xl">🔐</div>
-          <h1 className="mt-5 text-2xl font-black tracking-tight">Dashboard pengelola</h1>
-          <p className="mt-2 text-sm leading-6 text-[#768179]">Login sebagai admin untuk melihat dan mengelola reservasi.</p>
-          <form onSubmit={signIn} className="mt-6 space-y-3">
-            <label htmlFor="admin-key" className="text-xs font-bold uppercase tracking-wider text-[#657168]">Kunci admin</label>
-            <input id="admin-key" type="password" autoComplete="current-password" required value={draftToken} onChange={(event) => setDraftToken(event.target.value)} className="w-full rounded-xl border border-[#e0e6de] px-4 py-3 text-sm outline-none focus:border-[#62865a]" placeholder="Masukkan ADMIN_API_KEY" />
-            {error && <p role="alert" className="text-sm text-[#b64938]">{error}</p>}
-            <button type="submit" className="w-full rounded-xl bg-[#1c3e2d] px-4 py-3 text-sm font-bold text-white hover:bg-[#2e5940]">Buka dashboard <span className="ml-1">↗</span></button>
-          </form>
-        </div>
+        <p role={error ? "alert" : "status"} className="text-sm text-[#657168]">
+          {error || "Memeriksa sesi admin..."}
+        </p>
       </main>
     );
   }
@@ -233,7 +199,7 @@ export default function AdminPage() {
           </div>
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-2 text-xs font-semibold text-[#6c796f]"><i className={`h-2 w-2 rounded-full ${connected ? "bg-[#68bd52]" : "bg-[#d5a657]"}`} />{connected ? "Live" : "Menghubungkan..."}</span>
-            {!isDevelopment && <button onClick={signOut} className="rounded-full border border-[#e2e7e0] px-4 py-2 text-xs font-bold text-[#59665d] hover:bg-[#f5f7f2]">Keluar</button>}
+            <button onClick={signOut} className="rounded-full border border-[#e2e7e0] px-4 py-2 text-xs font-bold text-[#59665d] hover:bg-[#f5f7f2]">Keluar</button>
           </div>
         </div>
       </header>
@@ -245,7 +211,7 @@ export default function AdminPage() {
             <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-4xl">Pesanan lapangan</h1>
             <p className="mt-2 text-sm text-[#78837b]">Pantau dan kelola permintaan booking yang masuk.</p>
           </div>
-          <button onClick={() => void loadBookings(token)} disabled={loading} className="rounded-xl border border-[#dfe5dc] bg-white px-4 py-2.5 text-sm font-bold hover:border-[#95a594] disabled:opacity-60">↻ <span className="ml-1">{loading ? "Memuat..." : "Muat ulang"}</span></button>
+          <button onClick={() => void loadBookings()} disabled={loading} className="rounded-xl border border-[#dfe5dc] bg-white px-4 py-2.5 text-sm font-bold hover:border-[#95a594] disabled:opacity-60">↻ <span className="ml-1">{loading ? "Memuat..." : "Muat ulang"}</span></button>
         </div>
 
         {error && <p role="alert" className="mt-5 rounded-xl border border-[#f1d4ce] bg-[#fff4f1] px-4 py-3 text-sm text-[#a94332]">{error}</p>}
