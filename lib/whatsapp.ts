@@ -1,4 +1,5 @@
 type BookingConfirmation = {
+  id: number;
   customerName: string;
   customerPhone: string | null;
   courtName: string;
@@ -30,6 +31,38 @@ function dateLabel(value: string): string {
   }).format(new Date(`${value}T00:00:00.000Z`));
 }
 
+function confirmationMessage(booking: BookingConfirmation): string {
+  const total = new Intl.NumberFormat("id-ID", {
+    style: "currency",
+    currency: "IDR",
+    maximumFractionDigits: 0,
+  }).format(booking.totalPrice);
+
+  return `Halo ${booking.customerName}, booking lapangan ${booking.courtName} (${booking.sport}) pada ${dateLabel(booking.bookingDate)} pukul ${booking.startTime}-${booking.endTime} telah dikonfirmasi. Total pembayaran: ${total}.`;
+}
+
+function openWaEndpoint(baseUrl: string, sessionId: string): URL {
+  const base = new URL(baseUrl);
+  if (
+    (base.protocol !== "https:" && base.protocol !== "http:") ||
+    base.username ||
+    base.password ||
+    base.pathname !== "/" ||
+    base.search ||
+    base.hash
+  ) {
+    throw new Error("OPENWA_BASE_URL tidak valid.");
+  }
+  if (process.env.NODE_ENV === "production" && base.protocol !== "https:") {
+    throw new Error("OPENWA_BASE_URL harus menggunakan HTTPS di production.");
+  }
+
+  return new URL(
+    `/api/sessions/${encodeURIComponent(sessionId)}/messages/send-text`,
+    base.origin,
+  );
+}
+
 export async function sendBookingConfirmation(
   booking: BookingConfirmation,
 ): Promise<WhatsAppResult> {
@@ -42,80 +75,60 @@ export async function sendBookingConfirmation(
     return { status: "skipped", message: "Format nomor WhatsApp pelanggan tidak valid." };
   }
 
-  const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-  const accessToken = process.env.WHATSAPP_ACCESS_TOKEN;
-  const templateName = process.env.WHATSAPP_TEMPLATE_NAME;
-  const apiVersion = process.env.WHATSAPP_GRAPH_API_VERSION;
+  const baseUrl = process.env.OPENWA_BASE_URL?.trim();
+  const sessionId = process.env.OPENWA_SESSION_ID?.trim();
+  const apiKey = process.env.OPENWA_API_KEY?.trim();
   const missingConfiguration = [
-    ["WHATSAPP_PHONE_NUMBER_ID", phoneNumberId],
-    ["WHATSAPP_ACCESS_TOKEN", accessToken],
-    ["WHATSAPP_TEMPLATE_NAME", templateName],
-    ["WHATSAPP_GRAPH_API_VERSION", apiVersion],
+    ["OPENWA_BASE_URL", baseUrl],
+    ["OPENWA_SESSION_ID", sessionId],
+    ["OPENWA_API_KEY", apiKey],
   ]
     .filter(([, value]) => !value)
     .map(([name]) => name);
-  if (missingConfiguration.length > 0) {
+  if (!baseUrl || !sessionId || !apiKey) {
     return {
       status: "skipped",
-      message: `WhatsApp belum dikonfigurasi. Isi ${missingConfiguration.join(", ")} di .env.local, lalu restart server.`,
+      message: `OpenWA belum dikonfigurasi. Isi ${missingConfiguration.join(", ")} di environment aplikasi.`,
     };
   }
 
-  const parameters = [
-    booking.customerName,
-    `${booking.courtName} (${booking.sport})`,
-    dateLabel(booking.bookingDate),
-    `${booking.startTime}-${booking.endTime}`,
-    new Intl.NumberFormat("id-ID", {
-      style: "currency",
-      currency: "IDR",
-      maximumFractionDigits: 0,
-    }).format(booking.totalPrice),
-  ];
-
   try {
-    const response = await fetch(
-      `https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          messaging_product: "whatsapp",
-          recipient_type: "individual",
-          to: recipient,
-          type: "template",
-          template: {
-            name: templateName,
-            language: { code: process.env.WHATSAPP_TEMPLATE_LANGUAGE || "id" },
-            components: [
-              {
-                type: "body",
-                parameters: parameters.map((text) => ({ type: "text", text })),
-              },
-            ],
-          },
-        }),
-        signal: AbortSignal.timeout(10_000),
+    const response = await fetch(openWaEndpoint(baseUrl, sessionId), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": apiKey,
+        "Idempotency-Key": `courtly-booking-${booking.id}`,
       },
-    );
+      body: JSON.stringify({
+        chatId: `${recipient}@c.us`,
+        text: confirmationMessage(booking),
+      }),
+      redirect: "error",
+      signal: AbortSignal.timeout(10_000),
+    });
 
     if (!response.ok) {
-      console.error("WhatsApp confirmation request failed:", response.status);
+      console.error("OpenWA confirmation request failed:", response.status);
       return {
         status: "failed",
-        message: "Booking berhasil dikonfirmasi, tetapi pesan WhatsApp gagal dikirim.",
+        message: response.status === 401 || response.status === 403
+          ? "Booking berhasil dikonfirmasi, tetapi API key OpenWA tidak valid atau tidak memiliki akses ke session."
+          : response.status === 409
+            ? "Booking berhasil dikonfirmasi, tetapi session WhatsApp OpenWA belum siap atau belum terhubung."
+            : response.status === 400
+              ? "Booking berhasil dikonfirmasi, tetapi session OpenWA belum aktif atau data pesan ditolak."
+              : "Booking berhasil dikonfirmasi, tetapi pesan WhatsApp gagal dikirim. Periksa status session dan konfigurasi OpenWA.",
       };
     }
 
     return { status: "sent" };
   } catch (error) {
-    console.error("WhatsApp confirmation request failed:", error);
+    console.error("OpenWA confirmation request failed:", error);
     return {
       status: "failed",
-      message: "Booking berhasil dikonfirmasi, tetapi pesan WhatsApp gagal dikirim.",
+      message:
+        "Booking berhasil dikonfirmasi, tetapi pesan WhatsApp gagal dikirim. Periksa koneksi OpenWA.",
     };
   }
 }

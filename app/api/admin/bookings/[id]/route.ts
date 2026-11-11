@@ -69,6 +69,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 
     const notification = nextStatus === "confirmed"
       ? await sendBookingConfirmation({
+          id,
           customerName: String(booking.customer_name || "Pelanggan"),
           customerPhone: booking.customer_phone ? String(booking.customer_phone) : null,
           courtName: String(booking.court_name),

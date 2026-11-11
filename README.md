@@ -10,7 +10,7 @@ Aplikasi pemesanan lapangan olahraga berbasis Next.js App Router, React, Tailwin
 - Pencegahan double booking di sisi server dalam transaksi PostgreSQL. Baris lapangan dikunci (`SELECT ... FOR UPDATE`) sebelum cek bentrok dan insert, sehingga dua permintaan serentak untuk lapangan yang sama tidak dapat mengambil slot yang sama.
 - Login email/password menggunakan password hash `scrypt` di tabel `users`; admin diarahkan ke dashboard dan user ke halaman booking. Login memakai cookie sesi HttpOnly.
 - Dashboard admin menggunakan sesi login admin; tombol bypass hanya tersedia di development. Pembaruan booking menggunakan Server-Sent Events (SSE).
-- Saat admin mengonfirmasi booking, aplikasi mengirim template WhatsApp melalui WhatsApp Cloud API. Pesan dikirim setelah status booking berhasil tersimpan.
+- Saat admin mengonfirmasi booking, aplikasi mengirim pesan konfirmasi melalui OpenWA setelah status booking berhasil tersimpan.
 
 ## Menjalankan aplikasi
 
@@ -23,13 +23,7 @@ Persyaratan: Node.js 20.9+, npm, dan PostgreSQL 14+.
    ```
 
 2. Salin `.env.example` menjadi `.env.local`. Atur koneksi PostgreSQL, `ADMIN_EMAIL`, `ADMIN_PASSWORD` (minimal 12 karakter), dan `SESSION_SECRET` dengan nilai acak milik sendiri.
-3. Untuk notifikasi WhatsApp, isi `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_TEMPLATE_NAME`, `WHATSAPP_TEMPLATE_LANGUAGE=id`, dan `WHATSAPP_GRAPH_API_VERSION` di `.env.local`. Buat dan setujui template bahasa Indonesia di WhatsApp Manager dengan body berikut, menggunakan contoh nilai untuk semua variabel:
-
-   ```text
-   Halo {{1}}, booking {{2}} pada {{3}} pukul {{4}} telah dikonfirmasi. Total pembayaran: {{5}}.
-   ```
-
-   Template harus memiliki lima variabel body dalam urutan tersebut. `WHATSAPP_TEMPLATE_NAME` harus sama dengan nama template yang disetujui. Nomor pelanggan yang diawali `08` otomatis dikirim sebagai `628`.
+3. Untuk notifikasi WhatsApp dengan [OpenWA](https://github.com/rmyndharis/OpenWA), isi `OPENWA_BASE_URL`, `OPENWA_SESSION_ID`, dan `OPENWA_API_KEY` di `.env.local`. `OPENWA_BASE_URL` adalah origin HTTPS OpenWA tanpa path; buat API key operator terbatas ke session yang dipakai aplikasi. Nomor pelanggan yang diawali `08` otomatis dikirim sebagai `62`.
 4. Jika tabel `users` sudah dibuat sebelum fitur login, jalankan migrasi sekali:
 
    ```sh
@@ -57,11 +51,15 @@ Untuk produksi, jalankan `npm run build` lalu `npm run start`. Pastikan kredensi
    - `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` dari detail koneksi PostgreSQL Aiven.
    - `DB_SSL_CA` berisi seluruh isi CA certificate PEM dari Aiven.
    - `ADMIN_EMAIL`, `ADMIN_PASSWORD` (minimal 12 karakter), dan `SESSION_SECRET` (acak, minimal 32 karakter).
-   - Variabel `WHATSAPP_*` hanya jika notifikasi WhatsApp akan digunakan.
+   - `OPENWA_BASE_URL` (URL HTTPS publik service OpenWA, tanpa `/api`), `OPENWA_SESSION_ID`, dan `OPENWA_API_KEY` hanya jika notifikasi WhatsApp melalui OpenWA akan digunakan.
 5. Setelah database dan variabel tersedia, buat akun admin dengan menjalankan `npm run seed:admin` dari komputer lokal yang `.env.local`-nya sementara diatur ke koneksi Aiven yang sama. Untuk `DB_SSL_CA` di `.env.local`, tempel isi CA certificate PEM Aiven; aplikasi menerima baris baru maupun certificate yang tertempel sebagai satu baris. Di Vercel, tempel isi PEM lengkap. Jangan commit atau membagikan file tersebut.
 6. Deploy atau redeploy project dari Vercel. Uji halaman booking, login admin, dan pembuatan booking.
 
 Vercel menjalankan fungsi di lingkungan yang dapat berbeda-beda. Fitur pembaruan dashboard admin melalui SSE saat ini memakai listener in-memory, sehingga pembaruan lintas instance tidak dijamin; data tetap tersimpan di PostgreSQL. Untuk notifikasi real-time yang andal, gunakan broker bersama atau polling.
+
+OpenWA harus dijalankan sebagai service Docker terpisah dengan penyimpanan persisten, di host yang tetap aktif dan dapat diakses melalui HTTPS dari Vercel. Buat dan mulai session di dashboard OpenWA, lalu tautkan akun WhatsApp dengan memindai QR. Buat API key operator yang cakupannya dibatasi ke session tersebut; simpan key hanya sebagai environment variable `OPENWA_API_KEY` di Vercel. Endpoint pengiriman menggunakan `POST /api/sessions/{sessionId}/messages/send-text`. Jangan mengekspos API key di browser atau menaruhnya di URL.
+
+OpenWA menggunakan otomasi WhatsApp Web nonresmi, bukan WhatsApp Cloud API resmi; ada risiko perubahan kompatibilitas atau pembatasan akun. Gunakan hanya untuk pesan booking yang diharapkan pelanggan, jangan untuk pesan massal, dan pertimbangkan Cloud API resmi bila kepatuhan atau keandalan produksi menjadi prioritas.
 
 ## API
 
