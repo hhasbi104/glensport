@@ -11,9 +11,10 @@ export default async function AdminPage() {
     cookieStore.get("courtly_session")?.value ?? null,
   );
 
-  if (session?.role !== "admin") {
+  if (!session) {
     redirect("/login");
   }
+  if (session.role !== "admin") redirect("/");
 
   return <AdminDashboard />;
 }
